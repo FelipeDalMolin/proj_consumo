@@ -12,7 +12,6 @@ export class ConsumoEnergiaController {
     return this.service.criar(dto);
   }
 
-  // **O bulk deve estar exatamente assim:**
   @Post('bulk')
   bulkInsert(@Body() dtos: CreateConsumoDto[]) {
     return this.service.bulkInsert(dtos);

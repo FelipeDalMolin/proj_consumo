@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>Dashboard de Consumo de Energia</title>
+  <style>
+    body { font-family: Arial, sans-serif; max-width: 900px; margin: 2rem auto; }
+    section { margin-bottom: 2rem; border: 1px solid #ddd; padding: 1rem; }
+    form { display: flex; gap: 1rem; flex-wrap: wrap; }
+    label { flex: 1 1 200px; display: flex; flex-direction: column; }
+    button { padding: 0.5rem 1rem; }
+    #chart { width: 100%; height: 400px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
+    th, td { border: 1px solid #ccc; padding: 0.5rem; text-align: left; }
+  </style>
+  <!-- Chart.js via CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+  <h1>Dashboard de Consumo de Energia</h1>
+
+  <section>
+    <h2>1. Registrar Consumo</h2>
+    <form id="formCadastro">
+      <label>Usuário:<input type="text" id="c_usuarioId" required></label>
+      <label>kWh:<input type="number" id="c_quantidade" step="0.1" required></label>
+      <label>Data:<input type="date" id="c_dataLeitura" required></label>
+      <button type="submit">Salvar</button>
+    </form>
+    <div id="r_cadastro"></div>
+  </section>
+
+  <section>
+    <h2>2. Histórico & Gráfico</h2>
+    <form id="formHistorico">
+      <label>Usuário:<input type="text" id="h_usuarioId" required></label>
+      <label>Início:<input type="date" id="h_dataInicio" required></label>
+      <label>Fim:<input type="date" id="h_dataFim" required></label>
+      <button type="submit">Buscar</button>
+    </form>
+    <canvas id="chart"></canvas>
+    <table id="tabelaHistorico">
+      <thead><tr><th>Data</th><th>kWh</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>3. Alerta de Consumo Elevado</h2>
+    <form id="formAlerta">
+      <label>Usuário:<input type="text" id="a_usuarioId" required></label>
+      <button type="submit">Verificar</button>
+    </form>
+    <div id="r_alerta"></div>
+  </section>
+
+  <script>
+    const API = '/consumo';
+
+    // 1) Cadastro
+    document.getElementById('formCadastro')
+      .addEventListener('submit', async e => {
+        e.preventDefault();
+        const dto = {
+          usuarioId: document.getElementById('c_usuarioId').value,
+          quantidade: parseFloat(document.getElementById('c_quantidade').value),
+          dataLeitura: document.getElementById('c_dataLeitura').value
+        };
+        const res = await fetch(API, {
+          method:'POST',
+          headers:{'Content-Type':'application/json'},
+          body: JSON.stringify(dto)
+        });
+        document.getElementById('r_cadastro').textContent =
+          res.ok ? 'Salvo com sucesso!' : ' Erro ao salvar';
+      });
+
+   // 2) Histórico e Gráfico
+  let chartInstance;
+  document.getElementById('formHistorico')
+    .addEventListener('submit', async e => {
+      e.preventDefault();
+      const user = document.getElementById('h_usuarioId').value;
+      const ini  = document.getElementById('h_dataInicio').value;
+      const fim  = document.getElementById('h_dataFim').value;
+      const data = await fetch(
+        `${API}?usuarioId=${user}&dataInicio=${ini}&dataFim=${fim}`
+      ).then(r => r.json());
+
+      // Prepara tabela
+      const tbody = document.querySelector('#tabelaHistorico tbody');
+      tbody.innerHTML = '';
+      data.forEach(r => {
+        const tr = `<tr>
+          <td>${new Date(r.dataLeitura).toLocaleDateString()}</td>
+          <td>${r.quantidade}</td>
+        </tr>`;
+        tbody.insertAdjacentHTML('beforeend', tr);
+      });
+
+      // Prepara Chart.js
+      const labels   = data.map(r => new Date(r.dataLeitura).toLocaleDateString());
+      const valores  = data.map(r => r.quantidade);
+
+      // Calcula média
+      const soma  = valores.reduce((acc, v) => acc + v, 0);
+      const media = valores.length ? soma / valores.length : 0;
+      const mediaData = valores.map(() => media);
+
+      const ctx = document.getElementById('chart').getContext('2d');
+
+      if (chartInstance) chartInstance.destroy();
+      chartInstance = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels,
+          datasets: [
+            {
+              label: 'kWh',
+              data: valores,
+              fill: false,
+              tension: 0.3,
+              borderColor: 'royalblue',
+              pointBackgroundColor: 'white',
+              pointBorderColor: 'royalblue'
+            },
+            {
+              label: 'Média mensal',
+              data: mediaData,
+              fill: false,
+              borderColor: 'tomato',
+              borderDash: [5, 5],
+              pointRadius: 0
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          scales: {
+            x: { title: { display: true, text: 'Data' } },
+            y: { title: { display: true, text: 'kWh' } }
+          },
+          plugins: {
+            legend: { position: 'top' }
+          }
+        }
+      });
+    });
+
+    // 3) Alerta
+    document.getElementById('formAlerta')
+      .addEventListener('submit', async e => {
+        e.preventDefault();
+        const user = document.getElementById('a_usuarioId').value;
+        const j = await fetch(`${API}/alerta/${user}`).then(r => r.json());
+        document.getElementById('r_alerta').textContent =
+          j.alerta
+            ? ` Alerta! Diferença de ${j.diferenca} kWh`
+            : ` Consumo ok ${j.diferenca} kWh`;
+      });
+  </script>
+</body>
+</html>
